@@ -2,21 +2,21 @@
 
 [toc]
 
-# 分层模型
+# 模型分层
 
-- `Runtime`
+- **`Runtime`**
 
-  `Flink` 程序的最底层入口。提供了基础的核心接口完成流、状态、事件、时间等复杂操作，功能灵活。
+  `Flink` 程序的最底层入口。提供了基础的核心接口完成**流、状态、事件、时间**等复杂操作，功能灵活。
 
-- `DataStream API`
+- **`DataStream API`**
 
   面向开发者，基于`Runtime`层的抽象。
 
-- `Table API`
+- **`Table API`**
 
   统一`DataStream/DataSet`，抽象成带有 `Schema`信息的表结构. 通过表操作和注册表完成数据计算。 
 
-- `SQL`
+- **`SQL`**
 
   面向数据分析和开发人员，抽象为`SQL`操作。
 
@@ -26,7 +26,7 @@
 - `transformation` 数据的转换过程
 - `sink` 数据的输出
 
-![image-20230613141414083](Flink.assets/image-20230613141414083.png)
+![image-20230613141414083](https://raw.githubusercontent.com/win-shy/pic/master/pic/Flink%E6%A8%A1%E5%9E%8B.png)
 
 # 分布式缓存
 
@@ -57,13 +57,13 @@ class MyJoinmap() extends RichMapFunction[Clazz , ArrayBuffer[INFO]]{
 
 # 管理内存
 
-`Flink` 并不是将大量对象存在堆上，而是将对象都序列化到一个预分配的内存块上。此外，`Flink`大量的使用了堆外内存。如果需要处理的数据超出了内存限制，则会将部分数据存储到硬盘上。`Flink` 为了直接操作二进制数据实现了自己的序列化框架。
+`Flink`是将对象都序列化到一个预分配的内存块上，并且大量使用了堆外内存。如果处理数据超过了内存大小，会使部分数据存储到硬盘上。同时`Flink`为了直接操作二进制数据而实现了自己的序列换框架。
 
-- 堆内内存
+- **堆内内存**
 
-  `Flink`程序在创建对象后，`JVM`会在堆内内存中`分配`一定大小的空间，创建`Class对象`并返回对象引用，`Flink`保存对象引用，同时记录占用的内存信息。
+  `Flink`程序在创建对象后，`JVM`会在堆内内存中分配一定大小的空间，创建`Class对象`并返回对象引用，`Flink`保存对象引用，同时记录占用的内存信息。
 
-- 堆外内存
+- **堆外内存**
 
   堆外内存其底层调用`基于C`的`JDK Unsafe`类方法，通过`指针`直接进行内存的操作，包括内存空间的申请、使用、删除释放等
 
@@ -80,21 +80,19 @@ jobmanager.memory.heap.size：
 jobmanager.memory.off-heap.size：
 ```
 
-![image-20230614215215604](Flink.assets/image-20230614215215604.png)
+![image-20230614215215604](https://raw.githubusercontent.com/win-shy/pic/master/pic/Flink%E5%86%85%E5%AD%98%E6%A8%A1%E5%9E%8B.png)
 
 ## `TaskManager` 内存
 
-`TaskManager`内存同样包含`JVM`堆内内存、`JVM`堆外内存以及`JVM MetaData`内存三大块。
+`TaskManager`内存包含`JVM`堆内内存、`JVM`堆外内存以及`JVM MetaData`内存三大块。
 
-- `JVM`堆内内存又包含`Framework Heap`和`Task Heap`，即框架堆内存和任务`Task`堆内存。
+- `JVM`堆内内存又包含`Framework Heap`（**框架堆内存**）和`Task Heap`（**任务堆内存**）。
 - `JVM`堆外内存包含
-  - `Memory memory`托管内存，主要用于保存排序、结果缓存、状态后端数据等。
+  - **`Memory memory`托管内存**，用于保存**排序、结果缓存、状态后端数据**等。
   - `Direct Memory`直接内存
-    - `Framework Off-Heap Memory`：`Flink`框架的堆外内存，即`Flink`中`TaskManager`的自身内存，和`slot`无关。
+    - `Framework Off-Heap Memory`：`Flink`框架的堆外内存。
     - `Task Off-Heap`：`Task`的堆外内存
     - `Network Memory`：网络内存
-
-![图片](Flink.assets/640.png)
 
 ```
 / tm的框架堆内内存
@@ -121,90 +119,106 @@ taskmanager.memory.network.fraction: 0.1
 
 # `window`出现的数据倾斜
 
-`window`产生数据倾斜指的是数据在不同的窗口内堆积的数据量相差过多。本质上产生这种情况的原因是数据源头发送的数据量速度不同导致的。
+`window`数据倾斜是指：数据在不同的窗口内堆积的数据量相差过多，本质上还是不同的`Task`的数据相差太大。
 
-1. 在数据进入窗口前做预聚合
-2. 重新设计窗口聚合的key
-3. 使用再平衡算子rebalance等
+1. 在数据进入窗口之前对数据进行预聚合，减少进入窗口的数据量；
+2. 重新设计窗口聚合的`key`，使不同的窗口的数据量尽量相同；
+3. 使用再平衡的算子，如 `rebalance`，将数据再次打散，均匀发送到下游。
 
 # 使用聚合函数处理热点数据
 
-1. 对热点数据单独处理
-2. 对热点数据进行拆分聚合；
-3. 参数设置，设置微批模型，使缓存数据到达一定数量后触发。
+1. 对热点数据单独处理，可以使热点数据不会影响正常的服务；
+2. 对热点数据拆分聚合，也是单独对热点数据单独处理；
+3. 上游的`slot`将数据汇聚成一个批次发送到下一个`slot`中，可以将该批次值设置大点。
 
 # `Flink` `vs` `Spark`
 
-|                        Spark                         |                         Flink                          |
-| :--------------------------------------------------: | :----------------------------------------------------: |
-|                       RDD模型                        |                基于数据流，基于事件驱动                |
-|        微批处理（一个批完成后才能计算下一个）        | 无界实时流处理（事件在一个节点吹完成后发往下一个节点） |
-|                       处理时间                       |               事件时间，，处理时间，水印               |
-|                 窗口必须是批的整数倍                 |                    窗口类型多，灵活                    |
-|                       没有状态                       |                         有状态                         |
-|                     没有流式SQL                      |                       有流式SQL                        |
-| 均提供统一的批处理和流处理API，支持高级编程语言和SQL |  均提供统一的批处理和流处理API，支持高级编程语言和SQL  |
-|                都基于内存计算，速度快                |                 都基于内存计算，速度快                 |
-|               都支持Exactly-once一致性               |                都支持Exactly-once一致性                |
-|                都有完善的故障恢复机制                |                 都有完善的故障恢复机制                 |
+|                      `Spark`                       |                        `Flink`                         |
+| :------------------------------------------------: | :----------------------------------------------------: |
+|                      RDD模型                       |                基于数据流，基于事件驱动                |
+|       微批处理（一个批完成后才能处理下一个）       | 无界实时流处理（事件在一个节点处理完后发往下一个节点） |
+|                      处理时间                      |           事件时间，插入时间，处理时间，水印           |
+|                窗口必须是批的整数倍                |                       窗口类型多                       |
+|                      没有状态                      |                         有状态                         |
+|                    没有流式SQL                     |                       有流式SQL                        |
+| 提供统一的批处理和流处理API，支持高级编程语言和SQL |  均提供统一的批处理和流处理API，支持高级编程语言和SQL  |
+|               都基于内存计算，速度快               |                 都基于内存计算，速度快                 |
+|              都支持Exactly-once一致性              |                都支持Exactly-once一致性                |
+|               都有完善的故障恢复机制               |                 都有完善的故障恢复机制                 |
 
 # 泛型擦除
 
-`Flink` 具有一个类型提取系统，可以分析函数的输入和返回类型，自动获取类型信息，从而获得对应的序列化器和反序列化器。由于泛型擦除的存在，在某些情况下，自动提取的信息不够精细，需要采取显式提供类型信息，才能使应用程序正常工作。
+`Flink`具有一个类型提取系统，可以分析函数的输入和返回类型，自动获取类型信息，从而获得对应的序列化器和反序列化器。由于泛型擦除的存在，在某些情况下，自动提取的信息不够精细，需要采取显式提供类型信息，才能使应用程序正常工作。
 
 # 集群角色
 
-- 客户端`Client`：代码由客户端获取并装换，然后提交给 `JobManager`;
-- `JobManager`：对作业进行调度管理，并对作业进行转换任务，并将任务发送给`TaskManager`， 对失败任务做出反应，协调`checkpoint`
-- `TaskManager`：处理数据任务，缓存和交换数据流（数据从一个tm传到另一个tm）
-- `RecourceManager`：负责集群中的资源提供、回收、分配、管理`Task slots`
-- `Dispatcher`：提交 `Flink` 应用程序执行，为每个提交的作业启动一个新的 `JobMaster`
-- `JobMaster`：管理单个`JobGraph`的执行，每个作业都有自己的 `JobMaster`
-- `task slot`：资源调度的最小单位，表示并发可以处理 task 的数量，一个 task slot 中可以执行多个算子。
+- **客户端`Client`：**代码由客户端获取并装换，然后提交给 `JobManager`;
+- **`JobManager`**：对作业进行调度管理，对**作业转换为任务**，并将任务发送给`TaskManager`， 对失败任务做出反应，协调`checkpoint`
+- **`TaskManager`：**处理数据任务，缓存和交换数据流（数据从一个`tm`传到另一个`tm`）
+  - **`task slot`：**资源调度的最小单位，并发/并行处理 task 的数量，一个`task slot`中可以执行多个算子。
+
+- **`RecourceManager`：**负责集群中的资源提供、回收、分配、管理`Task slots`
+- **`Dispatcher`：**提交 `Flink` 应用程序执行，为每个提交的作业**启动**一个新的 `JobMaster`
+- **`JobMaster`：**管理单个`JobGraph`的执行，**每个作业都有**自己的 `JobMaster`
 
 # 部署模式
 
 - ***会话模式***
 
-  所有任务共享集群内的`JobManager`，所有作业会竞争集群中的资源
+  所有任务都**共享**集群中`JobManager`，所有任务**都会竞争**集群的资源
 
-  节省作业提交资源开销（集群已存在），减少资源和线程切换工作。但是所有作业**共享一个`JobManager`**，导致`JobManager`压力激增，同时一旦某`Job`发生故障时会影响到其他作业（中断或重启）。一般仅适用于`短周期`、`小容量`作业。
+  - 适用于短周期、小容量的任务
 
-  ![image-20230613145117783](Flink.assets/image-20230613145117783.png)
+  - 减少资源和线程的切换
+  - 共享一个`jobManager`，`jobmanager`压力大
 
   ```
   bin/flink run -c  com.wc.SocketStreamWordCount  FlinkTutorial-1.0.jar
   ```
 
+  ![image-20230613145117783](https://raw.githubusercontent.com/win-shy/pic/master/pic/Flink%E4%BC%9A%E8%AF%9D%E6%A8%A1%E5%BC%8F.png)
+
+  
+
 - ***单作业模式***
 
-  每个提交的作业启动集群，各集群间相互独立，并在各自作业完成后销毁，最大限度保障资源隔离。每个`Job`均衡分发自身的`JobManager`，单独进行job的调度和执行。
+  每个任务都会启动一个单独的集群，集群之间相互独立。
 
-  资源隔离，但是**每个`job`均维护一个集群**，启动、销毁以及资源请求消耗时间长，因此比较适用于长时间的任务执行（批处理任务）。
-
-  ![image-20230613145149249](Flink.assets/image-20230613145149249.png)
+  - 每个任务完成后销毁，最大限度保障资源隔离
+  - 每个`Job`均衡分发自身的`JobManager`，单独进行job的调度和执行
+  - **每个`job`均维护一个集群**，启动、销毁以及资源请求消耗时间长，因此比较适用于长时间的任务执行
 
   ```
   bin/flink run -d -t yarn-per-job -c  com.wc.SocketStreamWordCount  FlinkTutorial-1.0.jar
   ```
 
-- 应用模式
+  ![image-20230613145149249](https://raw.githubusercontent.com/win-shy/pic/master/pic/Flink%E5%8D%95%E4%BD%9C%E4%B8%9A%E6%A8%A1%E5%BC%8F.png)
 
-  将应用直接提交到`JobManager`上，每个应用都会启动一个`JobManager`，**但`Application`与`JobManager`合二为一。`Main`方法此时在`JobManager`中执行**，即在`JobManager`中完成`文件下载`、`jobGraph解析`、`提交资源`等事项。前面两种模式的`main`方法在`Client`端执行，该模式将大大减少`Client`压力。
+- ***应用模式***
 
-  ![image-20230613145227151](Flink.assets/image-20230613145227151.png)
-  
+  每个任务都会启动一个`jobManager`，只是**`Application`与`JobManager`合二为一。`Main`方法此时在`JobManager`中执行**。
+
   ```
   bin/flink run-application -t yarn-application -c com.wc.SocketStreamWordCount FlinkTutorial-1.0.jar
   ```
+  
+  ![image-20230613145227151](https://raw.githubusercontent.com/win-shy/pic/master/pic/Flink%E7%9A%84%E5%BA%94%E7%94%A8%E6%A8%A1%E5%BC%8F.png)
 
 # `Yarn` 运行模式
 
-`YARN` 上部署的过程是：客户端把 `Flink` 应用提交给 `Yarn` 的 `ResourceManager`，`Yarn` 的`ResourceManager` 会向 `Yarn` 的 `NodeManager` 申请容器。在这些容器上，`Flink` 会部署`JobManager` 和 `TaskManager` 的实例，从而启动集群。`Flink` 会根据运行在 `JobManger` 上的作业所需要的 `Slot` 数量动态分配 `TaskManager` 资源。
+`YARN`上运行过程是：客户端`Client`把`Flink`应用程序提交给`YARN`的`ResourceManager`, `YARN`的`ResourceManager`会向`NM`申请容器，启动`JobManager`和`TaskManager`的实例，从而启动集群。`Flink`会根据运行在`JobManager`上的作业所需要的`Slot`数量动态分配`TaskManager`资源。
+
+1.  通过脚本启动执行。客户端`Client`基于用户代码，生成流图（`StreamGraph`），再在`JobManager`中生成工作图（`JobGraph`）, 同时将任务提交给`ResourceManager`；
+2. `ResourceManager`选择一个启动`NM` ，启动`ApplicaitonMaster`;
+3. `ApplicationMaster`启动`JobManager`,  并将工作图（`JobGraph`）生成执行图（`ExecutionGraph`）;
+4. `JobManager`向`ResourceManager`申请资源，资源被封装在`slot`槽；
+5. `ResourceManager`启动一定数量的`TaskManager`，分配一定的`slot`
+6. `TaskManager`向`JobManager`注册；
+7. `JobManager`将要执行的任务分发到`TaskManager`，执行任务。
 
 # `Flink on K8s` 
 
-`k8s`是一个强大的，可移植的高性能的容器编排工具。这里的容器指的是 docker 容器化技术，它通过将执行环境和配置打包成镜像服务，在任务环境下快速部署docker容器，提供基础的环境服务。解决之前部署服务速度慢，迁移难，高成本的问题。
+`k8s`是一个强大的，可移植的高性能的容器编排工具。这里的容器指的是`docker`容器化技术，它通过将执行环境和配置打包成镜像服务，在任务环境下快速部署`docker`容器，提供基础的环境服务。解决之前部署服务速度慢，迁移难，高成本的问题。
 
 `k8s`提供了一套完整地容器化编排解决方案，实现容器发现和调度，负载均衡，弹性扩容，数据卷挂载等服务。
 
@@ -215,74 +229,79 @@ taskmanager.memory.network.fraction: 0.1
 3. `TaskManager`注册`Slots`、`JobManager`请求`Slots`并分配任务
 4. 部署`Task`执行并反馈状态
 
-![image-20230613155407931](Flink.assets/image-20230613155407931.png)
+![image-20230613155407931](https://raw.githubusercontent.com/win-shy/pic/master/pic/Flink%E7%9A%84k8s.png)
 
 # 执行图有哪几种
 
-- `StreamGraph`  (`Client`)
+- **`StreamGraph`  **(`Client`)
 
-  编写的流程图，通过`Stream API`生成，是执行图的最原始拓扑数据结构
+  编写的流程图，通过`Stream API`生成，是执行图的**最原始拓扑数据结构**
 
-- `JobGraph` (`Client` -> `JobManager`)
+- **`JobGraph` **(`Client` -> `JobManager`)
 
-  `StreamGraph`在`Client`中经过算子`chain`链做合并优化，将其转换为`JobGraph`拓扑图。并被提交到 `JobManager`。
+  `StreamGraph`在`Client`中经过**算子`chain`链**做合并优化，将其转换为`JobGraph`拓扑图。并被提交到 `JobManager`。
 
-- `ExecutionGraph` (`JobManager` )
+- **`ExecutionGraph`** (`JobManager` )
 
-  `JobManager`中将`JobGraph`进一步转换为`ExecutionGraph`，此时`ExecutuonGraph`根据算子配置的并行度转变为并行化的Graph拓扑结构。
+  `JobManager`中将`JobGraph`进一步转换为`ExecutionGraph`，此时`ExecutuonGraph`根据算子配置的**并行度转变为并行化**的Graph拓扑结构。
   
-- 物理执行图 （`JobManager` -> `TaskManager`）
+- **物理执行图** （`JobManager` -> `TaskManager`）
   
   `JobManager`进行`Job`调度，`TaskManager`最终部署Task的图结构。
 
-![image-20230613160509423](Flink.assets/image-20230613160509423.png)
+![image-20230613160509423](https://raw.githubusercontent.com/win-shy/pic/master/pic/Flink%E7%9A%84%E6%89%A7%E8%A1%8C%E5%9B%BE.png)
 
 # 分区
-建议在使用 `Flink` 消费 `Kafka` 数据时，最好保持上下游并行度一致。也就是说，尽量将 `Kafka` 的分区数设置为 `Flink Consumer` 的并行度。
+`Flink`在消费`Kafka`数据时，最好是保持上下游并行度一致。即；`Kafka`有多少个分区，那么`Flink`消费者的并行度与之**相同**。
+$$
+Kafka的分区数= Flink的并行度
+$$
+不过，在某些情况下，为了提高数据的处理速度，需要将`Flink`消费者的并行度设置得大于`Kafka`分区数。但是这样设置是有某些消费者是无法消费到数据，那么需要对消费者之后的数据处理进行重分区。
+$$
+Kafka的分区数 <= Flink的并行度 + 重分区
+$$
 
-但是在某些情况下，为了提高数据处理速度，您可能需要将 `Flink` 消费者的并行度设置得大于 `Kafka` 的分区数。如果不进行任何设置，可能会导致某些 `Flink Consumer` 线程无法消费到数据。因此，需要进行 `Flink` 的重新分配（`Redistributing`）操作，即对数据进行重分配。
+- **随机分配 -- `shuffle`**
 
-- 随机分配 -- `shuffle`
+  数据**随机的分配**到下游算子的并行任务中，使用的均匀分配，数据随机打乱，均匀传递到下游任务。所以每次分配在下游分区时，数据是**不相同**的。
 
-  数据随机的分配到下游算子的并行任务中，服从均匀分布，数据随机打乱，均匀传递到下游任务分区。每次`shuffle`在子分区内会得到不同的结果
+- **轮询分配 -- `rebalance`**
 
-- 轮询分配 -- `rebalance`
+  数据按照**先后顺序依次分发分配**，按照轮询的方式，将数据平均分配到下游的并行任务中。
 
-  按照数据的先后顺序将数据依次分发，按照轮询的方式，将输入流数据平均分配到下游的并行任务中。
+- **重缩放 -- `rescala`**
 
-- 重缩放 -- `rescala`
+  按照轮询的方式，将数据的发送到下游的一部分任务中。（不完全覆盖所有下游分区）
 
-  只会将数据轮询发送到下游并行任务的一部分中
+- **广播 -- `broadcast`**
 
-- 广播 -- `broadcast`
+  数据在不同的分区中都保留一份，可能会被重复处理
 
-  数据会在不同的分区都保留一份，可能进行重复处理
+- **全局分区 -- `global`**
 
-- 全局分区 -- `global`
-
-  输入流数据都发送到下游算子的第一个并行子任务中去
+  数据被分配到下游的第一个子任务中
 
 - 自定义分区 -- `partitioner`
 
 # 任务槽`Task slot`
 
-为了控制并发量，我们需要在TaskManager 上对每个任务运行所占用的资源做出明确的划分，这就是任务槽（task slots）.
+为了控制并发量，需要在`TaskManager`上对每个任务运行所占用的资源做出明确的划分，这就是任务槽（task slots）。
 
-任务槽决定了`TaskManager`能够并行处理的任务数量。
+任务槽决定了`TaskManager`**能够并行处理的任务数量**。
 
-每个任务槽（task slot）表示了 TaskManager 拥有固定大小集合的计算资源，这些资源就是用来独立执行一个子任务的。
+任务槽（`task slot`）表示了 `TaskManager` 拥有固定大小集合的计算资源，这些资源就是用来独立执行一个子任务的。
 
-slot 目前仅仅用来隔离内存，不会涉及 CPU 的隔离。在具体应用时，可以将 slot数量配置为机器的 CPU核心数，尽量避免不同任务之间对 CPU的竞争
+`slot`目前仅仅用来隔离内存，不会涉及`CPU`的隔离。在具体应用时，可以将`slot`数量配置为机器的`CPU`核心数，尽量避免不同任务之间对`CPU`的竞争
 
-TaskManager具有的并发执行能 力，可以通过参数 `taskmanager.numberOfTaskSlots` 进行配置
+`TaskManager`具有的并发执行能 力，可以通过参数 `taskmanager.numberOfTaskSlots` 进行配置
 
 # 并行度
 
-一个特定算子的子任务（subtask）的个数被称之为其并行度（parallelism）
+一个特定算子的子任务（`subtask`）的个数被称之为其并行度（parallelism）
 
-包含并行子任务的数据流，就是并行数据流，它需要多个分区（stream partition）来分配并行任务。
+包含并行子任务的数据流，就是并行数据流，它需要多个分区（`stream partition`）来分配并行任务。
 
-并行度是动态概念，也就是 TaskManager 运行程序时实际使用的并发能力，可以通过参数 `parallelism.default`进行配置
+并行度是动态概念，也就是` TaskManager` 运行程序时实际使用的并发能力，可以通过参数 `parallelism.default`进行配置
 
 # 窗口理解
 
@@ -297,8 +316,8 @@ TaskManager具有的并发执行能 力，可以通过参数 `taskmanager.number
 - 全局窗口
 # `Flink SQL` 是如何实现的
 
-1. `SQL query` 经过 `Calcite`解析转换成`SQL`节点树，通过验证后构建成`Calcite`的抽象语法树（Logical plan）。
-2. `Table API`上的调用会构建成`Table API`的抽象语法树，并通过`Calcite`提供的`RelBuilder`转变成`Calcite`的逻辑计划（Logical plan）。
+1. `SQL query` 经过 `Calcite`解析转换成`SQL`节点树，通过验证后构建成`Calcite`的抽象语法树（`Logical plan`）。
+2. `Table API`上的调用会构建成`Table API`的抽象语法树，并通过`Calcite`提供的`RelBuilder`转变成`Calcite`的逻辑计划（`Logical plan`）。
 3. 逻辑计划被优化器优化后，转化成物理计划和 `JobGraph`；
 4. 在提交任务后会分发到各个 `TaskManager` 中运行，在运行时会使用 `Janino` 编译器编译代码后运行。
 
@@ -310,17 +329,17 @@ TaskManager具有的并发执行能 力，可以通过参数 `taskmanager.number
 
 # 海量数据的高效去重
 
-1. 基于状态后端，内存去重。采用`Hashset`等数据结构，读取数据中类似主键等唯一性标识字段，在内存中存储并进行去重判断。
-2. 基于`HyperLog`，不是精准的去重
-3. 基于布隆过滤器；快速判断一个key是否存在于某容器，不存在就直接返回。
-4. 基于`BitMap`；用一个bit位来标记某个元素对应的`Value`，而`Key`即是该元素。由于采用了Bit为单位来存储数据，因此可以大大节省存储空间。
-5. 基于外部数据库；选择使用`Redis`或者`HBase`存储数据，我们只需要设计好存储的`Key`即可，不需要关心`Flink`任务重启造成的状态丢失问题。使用`Redis Key`去重。借助Redis的`Hset`等特殊数据类型，自动完成`Key`去重。
-6. `DataFrame/SQL`场景，使用`group by`、`over`、`window`开窗等`SQL`函数去重
-7. 利用`groupByKey`等聚合算子去重
+1. **基于状态后端**，内存去重。采用`Hashset`等数据结构，读取数据中类似主键等唯一性标识字段，在内存中存储并进行去重判断。
+2. **基于`HyperLog`**，不是精准的去重
+3. **基于布隆过滤器**，快速判断一个key是否存在于某容器，不存在就直接返回。
+4. **基于`BitMap`**，用一个bit位来标记某个元素对应的`Value`，而`Key`即是该元素。由于采用了Bit为单位来存储数据，因此可以大大节省存储空间。
+5. **基于外部数据库**，选择使用`Redis`或者`HBase`存储数据，我们只需要设计好存储的`Key`即可，不需要关心`Flink`任务重启造成的状态丢失问题。使用`Redis Key`去重。借助Redis的`Hset`等特殊数据类型，自动完成`Key`去重。
+6. `DataFrame/SQL`场景，使用**`group by`、`over`、`window`开窗**等`SQL`函数去重
+7. 利用**`groupByKey`**等聚合算子去重
 
 # `Flink`中`Task`如何做到数据交换
 
-在一个 `Flink Job` 中，数据需要在不同的 task 中进行交换，整个数据交换是有 `TaskManager` 负责的，`TaskManager` 的网络组件首先从缓冲 `buffer` 中收集 `records`，然后再发送。`Records` 并不是一个一个被发送的，是积累一个批次再发送，`batch` 技术可以更加高效的利用网络资源。
+在一个`Flink Job`中，数据需要在不同的`task`中进行交换，整个数据交换是有`TaskManager`负责的，`TaskManager`的网络组件首先从缓冲`buffer`中收集 `records`，然后再发送。`Records`并不是一个一个被发送的，是积累一个批次再发送，`batch` 技术可以更加高效的利用网络资源。
 
 # `Flink`设置并行度的方式
 1. 代码层面：操作算子层面`map().setParallelism(10)`
@@ -331,7 +350,7 @@ TaskManager具有的并发执行能 力，可以通过参数 `taskmanager.number
 优先级**依次降低**
 
 # 水印`watermark`
-`Flink`中的水印是处理延迟数据的优化机制。当这类数据因为某些原因导致乱序或是延迟到达，这类数据不能丢弃也不能无限等待。
+`Flink`中的水印是处理延迟数据的优化机制。当这类数据因为某些原因导致乱序或延迟到达，这类数据不能丢弃也不能无限等待。
 
 在一个窗口内，当位于窗口（最大事件时间戳 - watermark）>= (当前窗口最小时间戳 + 窗口大小) 的数据到达后，表明该窗口内的所有数据均已到达，此时不会再等待，直接触发窗口计算。
 
@@ -341,13 +360,13 @@ TaskManager具有的并发执行能 力，可以通过参数 `taskmanager.number
 3. 结合最大延迟时间和侧输出流机制，彻底解决数据延迟。
 
 ## 形式
-- 有序流中内置水位线设置
+- **有序流中内置水位线设置**
   对于有序流，主要特点就是时间戳单调增长，所以永远不会出现迟到的数据。`WatermarkStrategy.forMonotonousTimestamps()`
 
-- 乱序流中内置水位线设置
+- **乱序流中内置水位线设置**
   由于乱序流中需要等待迟到数据到齐，所以必须设置一个固定的延迟时间。`WatermarkStrategy. forBoundedOutOfOrderness(Duration.ofSeconds(3))`
 
-- 自定义水位线生成器
+- **自定义水位线生成器**
   - 周期性水位线生成器（Periodic Generator）
     周期性生成器一般是通过 `onEvent()`观察判断输入的事件，而在 `onPeriodicEmit()`里发出水位线。
   - 断点式水位线生成器 （Punctuated Generator）
@@ -357,7 +376,7 @@ TaskManager具有的并发执行能 力，可以通过参数 `taskmanager.number
     自定义的数据源中抽取事件时间，然后发送水位线
 
 ## 水位线的传递
-在流处理中，上游任务处理完水位线、时钟改变之后，要把当前的水位线再次发出，广播给所有的下游子任务。而当一个任务接收到多个上游并行任务传递来的水位线时，应该以最小的那个作为当前任务的事件时间。
+在流处理中，上游任务处理完水位线、时钟改变之后，要把当前的水位线再次发出，广播给所有的下游子任务。而当一个任务接收到多个上游并行任务传递来的水位线时，应该以**最小的那个作为当前任务的事件时间**。
 
 比如：有两条流在进行`join`时，A流的时间为1，B流的时间为2，那么此时当前的事件时间最小为1。接下来A流时间为3，而B流的时间没有变，那么此时当前的事件时间最小为2。当前的事件时间只会递增而不是减少。
 
@@ -378,20 +397,24 @@ TaskManager具有的并发执行能 力，可以通过参数 `taskmanager.number
 
   当流速快的Barrier流到下游算子当中，此时不理会此`Barrier`，正常进行后续数据的计算。当流速慢的`Barrier`到来的时候，才完成进行快照，但是不会将后续数据快照，而是仍作为后续的`Barrier`中的数据。
 
+# 状态管理
+
+**在 `Flink` 中状态管理的模块就是我们所熟知的 `Checkpoint` \ `Savepoint`。**
+
 # 状态机制
 - 状态：本质上是数据，包括 `MapState`，`ValueState`，`ListState`
-- 状态后端：`HashState`，`RocksDB`；
-- 状态管理：定时将状态后端中存储的状态同步到远程的存储系统的组件中，可以在任务故障转移时，从远程将状态数据恢复到任务中。
+- 状态后端：`HashState`，`FileState`， `RocksDBState`；
+- 状态管理：定时将状态后端中存储的状态同步到远程的存储系统的组件中。在任务故障转移时，从远程将状态数据恢复到任务中。
 
-`RocksDB`只会影响任务中的 `keyed-state`存储的方式和地方，对 `operator-state`不会受到影响。
+`RocksDBState`只会影响任务中的`keyed-state`存储的方式和地方，对`operator-state`不会受到影响。
 
-- `keyed-state` 键值状态
+- `keyed-state`键值状态
 
-  以 `k-v`形式存储，状态值和`key`绑定，紧跟在 `keyBy` 之后才能使用的状态。 
+  以 `k-v`形式存储，状态值和`key`绑定，紧跟在`keyBy`之后才能使用的状态。 
 
-- `operator-state` 操作状态
+- `operator-state`操作状态
 
-  非`k-v` 形式的算子结构，状态值与算子绑定，如 `kafka` `offset` 被保存在 `ListState`
+  非`k-v`形式的算子结构，状态值与算子绑定，如 `kafka` `offset` 被保存在 `ListState`
 
 # 状态后端的选择
 
@@ -488,17 +511,17 @@ StateTtlConfig.Builder builder = StateTtlConfig
 
 - 懒删除策略
 
-  访问 `State` 的时候根据时间戳判断是否过期，如果过期则主动删除 `State` 数据。
+  **访问** `State` 的时候根据时间戳判断**是否过期**，如果过期则主动删除 `State` 数据。
 
   这个删除策略是不需要用户进行配置的，只要你打开了 `State TTL` 功能，就会默认执行。
 
 - 全量快照清除策略
 
-  从状态恢复（`checkpoint`、`savepoint`）的时候采取做过期删除，但是不支持 `rocksdb` 增量 `ck`
+  从**状态恢复**（`checkpoint`、`savepoint`）的时候采取做过期删除，但是不支持 `rocksdb` 增量 `ck`
 
 - 增量快照清除策略
 
-  访问 `state` 的时候，主动去遍历一些 `state` 数据判断是否过期，如果过期则主动删除 `State` 数据
+  访问 `state` 的时候，主动去**遍历一些 `state` 数据判断是否过期**，如果过期则主动删除 `State` 数据
 
   - 如果没有 `state` 访问，也没有处理数据，则不会清理过期数据。
   - 增量清理会增加数据处理的耗时。
@@ -507,7 +530,7 @@ StateTtlConfig.Builder builder = StateTtlConfig
 
 - `rocksdb`合并清除策略
 
-  `rockdb` 做 `compaction` 的时候遍历进行删除。仅仅支持 `rocksdb`
+  `rockdb` 做 **`compaction` 的时候遍历进行删除**。仅仅支持 `rocksdb`
 
   `rocksdb compaction` 时调用 `TTL` 过滤器会降低 `compaction` 速度。因为 `TTL` 过滤器需要解析上次访问的时间戳，并对每个将参与压缩的状态进行是否过期检查。对于集合型状态类型（比如 `ListState` 和 `MapState`），会对集合中每个元素进行检查。
 
@@ -574,13 +597,13 @@ Spark SQL底层基于`Spark`引擎，使用`Antlr`解析语法，编译生成逻
 
 反压时一般下游速度慢于上游速度，数据`久积成疾`，需要做限流。`Task`任务需要保持上下游动态反馈，如果下游速度慢，则上游限速；否则上游提速。实现动态自动反压的效果。
 
-1. 每个`TaskManager`都有一个`Network buffer pool`，该内存实在堆外内存申请的；
+1. 每个`TaskManager`都有一个`Network buffer pool`，该内存在堆外内存申请的；
 2. 同时每个`Task`创建自身的`Local BufferPool`（本地内存），并于`Network BufferPool` 交换内存；
 3. 上游`Record Writer`向`Local BufferPool`申请内存写数据，如果该内存不足，则向共享内存`Network BufferPool`申请内存写数据，如果使用完毕，则会释放。
 4. 本次`Task`任务会将内存中的发送到网络，然后下游端按照类似的机制进行处理；
 5. 当下游申请`buffer`失败，表示当前节点内存不足（反压了），则发送反压信号给上游，上游减慢数据的处理发送，直到下游恢复。
 
-**总结**：下游由于各种原因导致当前任务申请内存不足，使得上游数据无法发送过来。这个过程就是反压上传。
+**总结**：下游由于各种原因导致当前任务申请内存不足，使得上游数据缓慢发送过来。这个过程就是反压上传。
 
 ## 处理
 
@@ -594,7 +617,7 @@ Spark SQL底层基于`Spark`引擎，使用`Antlr`解析语法，编译生成逻
 
 - 事前：解决上述介绍到的 `数据倾斜`、`算子性能` 问题。
 -  事中：在出现反压时：
-  - **限制数据源的消费数据速度**。比如在事件时间窗口的应用中，可以自己设置在数据源处加一些限流措施，让每个数据源都能够够匀速消费数据，避免出现有的 `Source` 快，有的 `Source` 慢，导致窗口 `input pool` 打满，`watermark` 对不齐导致任务卡住。
+  - **限制数据源的消费数据速度**。比如在事件时间窗口的应用中，可以自己设置在数据源处加一些限流措施，让每个数据源都能够匀速消费数据，避免出现有的 `Source` 快，有的 `Source` 慢，导致窗口 `input pool` 打满，`watermark` 对不齐导致任务卡住。
   - **关闭 Checkpoint**。关闭 `Checkpoint` 可以将 `barrier` 对齐这一步省略掉，促使任务能够快速回溯数据。我们可以在数据回溯完成之后，再将 `Checkpoint` 打开。
 
 ### 处理过程
@@ -622,18 +645,18 @@ Spark SQL底层基于`Spark`引擎，使用`Antlr`解析语法，编译生成逻
 
 - 输出端
 
-  保证**幂等**性或**事务**性，可以使用二阶段实物提交机制来实现。
+  保证**幂等**性或**事务**性，可以使用二阶段事务提交机制来实现。
 
-  **`幂等`**写入就是多次写入会产生相同的结果，结果具有不可变性。在`Flink`中`saveAsTextFile`算子就是一种比较典型的幂等写入。其需要限制在于外部存储系统必须支持这样的幂等写入。
+  **`幂等`**写入就是多次写入会产生相同的结果，结果具有不可变性。在`Flink`中`saveAsTextFile`算子就是一种比较典型的幂等写入。其需要限制在于**外部存储系统**必须支持这样的幂等写入。
 
-  **事务**用一个事务来进行数据向外部系统的写入，这个事务是与检查点绑定在一起的。当 Sink 任务遇到 barrier 时，开始保存状态的同时就开启一个事务，接下来所有数据的写入都在这个事务中；待到当前检查点保存完毕时，将事务提交，所有写入的数据就真正可用了
+  **事务**用一个事务来进行数据向外部系统的写入，这个事务是与检查点绑定在一起的。当 Sink 任务遇到 barrier 时，开始保存状态的同时就开启一个事务，接下来所有数据的写入都在这个事务中；待到当前检查点保存完毕时，将事务提交，所有写入的数据就真正可用了（遇到barrier -> 开启事务 -> 完成检查点 -> 提交事务  ）
   
-  `二阶段提交`则对于每个`checkpoint`创建事务，先预提交数据到`sink`中，然后等所有的`checkpoint`全部完成后再真正提交请求到`sink`, 并把状态改为已确认，从而保证数据仅被处理一次（先开启事务，等到数据到了`sink`端后，完成预提交，接着等到真正提交，提交完成后，当前事务也关闭了。）。
+  `二阶段提交`则对于每个`checkpoint`创建事务，先预提交数据到`sink`中，然后等所有的`checkpoint`全部完成后再真正提交请求到`sink`, 并把状态改为已确认，从而保证数据仅被处理一次（先开启事务，等到数据到了`sink`端后，完成预提交，接着等到真正提交，提交完成后，当前事务也关闭了）。
 
 **总结**：
 
 1. ***Source 引擎可以重新消费，比如 Kafka 可以重置 offset 进行重新消费***
-2. ***Flink 任务配置 exactly-once，保证 Flink 任务 State 的 exactly-once***
+2. ***`Flink` 任务配置 exactly-once，保证 `Flink` 任务 State 的 exactly-once***
 3. ***Sink 算子支持两阶段或者可重入，保证产出结果的 exactly-once***
    - `Sink` 两阶段：由于两阶段提交是随着 `Checkpoint` 进行的，假设 `Checkpoint` 是 `5min` 做一次，那么数据对下游消费方的可见性延迟至少也是 `5min`，所以会有数据延迟等问题，目前用的比较少。
    - `Sink` 支持可重入：举例：
@@ -646,7 +669,7 @@ Spark SQL底层基于`Spark`引擎，使用`Antlr`解析语法，编译生成逻
 
 端到端的`exactly-once`对`sink`要求比较高，具体实现主要有**幂等写入**和**事务性写入**两种方式。
 
-- 幂等写入的场景依赖于业务逻辑，更常见的是用事务性写入。
+- 幂等写入的场景依赖于业务逻辑。
 
 - 事务性写入又有预写日志（`WAL`）和两阶段提交（`2PC`）两种方式。
 

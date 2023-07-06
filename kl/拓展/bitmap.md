@@ -9,7 +9,7 @@
 如果使用位存储 20亿 * 1 / (8 * 1024 * 1024 * 1024) = 0.233G
 ```
 
-![img](bitmap.assets/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3FxXzI5MTE5NTgx,size_16,color_FFFFFF,t_70.png)
+![img](https://raw.githubusercontent.com/win-shy/pic/master/pic/bitmap01.png)
 
 # 应用场景
 
