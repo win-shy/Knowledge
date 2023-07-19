@@ -83,7 +83,7 @@ hdfs-site.xml
   - 在`Executor`之间调度任务
   - 跟踪`Executor`的执行情况
   - 通过`UI`展示查询运行情况
-- `spark context`：控制整个 `application` 的生命周期，包括 `dagsheduler` 和 `task scheduler` 等组件。
+- `spark context`：控制整个`application`的生命周期，包括`dagsheduler`和`taskscheduler`等组件。
 - `client`：用户提交程序的入口。
 - `Executor`：负责在 `Spark` 作业中运行具体任务（`Task`）
   - 通过自身的块管理器（`Block Manager`）为用户程序中要求缓存的 `RDD` 提供内存式存储
@@ -207,13 +207,13 @@ hdfs-site.xml
 
 **总结：**
 
-- `join`就是简单的把两0个`RDD`按照相同的`key`给拼在一起，返回：`<key, Tuple2<value, value>>`
+- `join`就是简单的把两个`RDD`按照相同的`key`给拼在一起，返回：`<key, Tuple2<value, value>>`
   - 有多少条关联数据，就有多少个输出 
-  - 单个`RDD`不做提前聚合
+  - 单个`RDD`在分区内不做提前聚合
 
 - `cogroup` 是把两个RDD按照`key`拼起来，会汇总得到的`value` 。返回：`<key, Tuple2<Iterable<value>, Iterable(value)>>`
   - 有多少个`key`，就有多少个输出
-  - 单个`RDD`基于`key`做提前聚合
+  - 单个`RDD`基于`key`在分区内做提前聚合
 
 # 宽窄依赖
 
@@ -234,7 +234,7 @@ hdfs-site.xml
 **总结：**划分`Stage`为了进行并行计算，每个`Stage`内部都可以进行并行计算，等到当前`Stage`都处理完毕，才会执行下一个阶段。
 
 # 如何划分 DAG 的 stage
-对于窄依赖，`partition` 的转换处理在 `stage` 中完成计算，不划分(将窄依赖尽量放在在同一个 `stage` 中，可以实现流水线计算)。
+对于窄依赖，`partition` 的转换处理在 `stage` 内完成计算，不划分   (将窄依赖尽量放在在同一个 `stage` 中，可以实现流水线计算)。
 对于宽依赖，由于有 `shuffle` 的存在，只能在父 `RDD` 处理完成后，才能开始接下来的计算，也就是说需要要划分 `stage`。
 
 # stage划分算法
@@ -250,7 +250,7 @@ hdfs-site.xml
 3. ``Stage``：`Stage`等于宽依赖的个数加1；
 4. `Task`：一个`Stage`阶段中，最后一个`RDD`的分区个数就是`Task`的个数。
 
-**总结：**`Stage`的划分是从尾向开始倒推，`action`作为`ResultShuffle`，如果遇到`shuffle`算子则划分为新的`Stage`，也就是说每个`Stage`里面最多只有一个`Shuffle`算子或者是一个`action`算子。
+**总结：**`Stage`的划分是从尾部向开始倒推，`action`作为`ResultShuffle`，如果遇到`shuffle`算子则划分为新的`Stage`，也就是说每个`Stage`里面最多只有一个`Shuffle`算子或者是一个`action`算子。
 
 # 数据倾斜的处理
 
@@ -263,27 +263,26 @@ hdfs-site.xml
 **解决方法**
 
 1. **避免不必要的 `shuffle`**，将 `reduce-side-join` 提升为 `map-side-join`
-2. **分拆发生数据倾斜的记录**，分成几个部分进行，然后合并 join 后的结果
+2. **分拆发生数据倾斜的key**，分成几个部分进行，然后合并 join 后的结果
 3. **改变并行度**，可能并行度太少了，导致个别 task 数据压力大
 4. **两阶段聚合**，先局部聚合，再全局聚合
 5. **自定义 `partitioner`**，分散 `key` 的分布，使其更加均匀
-5. **对key加盐或哈希值来拆分key**  将数据分散到不同的 partition
+5. **对key加盐或哈希值**  将数据分散到不同的 partition
 
 # `OOM`问题的解决方案
 
 - `map`类型的算子执行中内存溢出如`flatmap`, `mapPartition`
-
   - 原因：`map` 端过程产生大量对象导致内存溢出：这种溢出的原因是在单个 `map` 中产生了大量的对象导致的针对这种问题。
-
+  
   - 解决方案
-
+  
     - 增加堆内内存
-
+  
     - 减少每个 `Task` 处理数据量
-      - 在不增加内存的情况下，可以减少每个 `Task` 处理数据量，使每个 `Task` 产生大量的对象时，`Executor` 的内存也能够装得下。具体做法可以在会产生大量对象的`map` 操作之前调用 `repartition` 方法，分区成更小的块传入 `map`。
-
+      - 在不增加内存的情况下，可以减少每个 `Task` 处理数据量，使每个 `Task` 产生大量的对象时，`Executor` 的内存也能够装得下。具体做法可以在会产生大量对象的`map` 操作之前**调用 `repartition` **方法，分区成更小的块传入 `map`。
+  
 - `shuffle` 后内存溢出如 `join`，`reduceByKey`，`repartition`。
-  - `shuffle`内存溢出的情况可以说都是`shuffle`后，单个文件过大导致的。
+  - `shuffle`内存溢出的情况可以说都是`shuffle`后，单个文件过大导致的。-- 利用分区函数分散数据
     - 在`shuffle`的使用，需要传入一个`partitioner`。`Spark`中默认`shuffle`操作是`HashPatitioner`，默认值是父 `RDD`中最大的分区数．这个参数 `spark.default.parallelism`只对`HashPartitioner`有效．
     - 如果是别的`partitioner`导致的`shuffle`内存溢出就需要重写`partitioner`代码了．
   
@@ -340,9 +339,9 @@ persist()方法允许指定持久化级别，可以选择将数据存储在内�
 
 在大数据量的情况下，`join`是一中非常昂贵的操作，需要在`join`之前应尽可能的**先缩小数据量**。
 
-1. 若两个`RDD`都有重复的`key`，`join`操作会使得数据量会急剧的扩大。所有最好先使用`distinct`或者`combineByKey`操作来减少`key`空间或者用`cogroup`来处理重复的`key`，而不是产生所有的交叉结果。在`combine`时，进行机智的分区，可以避免第二次`shuffle`。 (减少数据量)
-2. 如果只在一个`RDD`出现重复的`key`，那将在无意中丢失你的数据。所以使用外连接会更加安全，这样你就能确保左边的`RDD`或者右边的`RDD`的数据完整性，在`join`之后再过滤数据。（使用外连接，再过滤）
-3. 如果我们容易得到`RDD`的可以的有用的子集合，那么可以先用`filter`或者`reduce`，再用 `join`。(先减少数据在过滤)
+1. 若两个`RDD`都有重复的`key`，`join`操作会使得数据量会急剧的扩大。所有最好先使用`distinct`或者`combineByKey`操作来减少`key`空间或者用`cogroup`来处理重复的`key`，而不是产生所有的交叉结果。在`combine`时，进行机智的分区，可以避免第二次`shuffle`。 (**减少数据量**)
+2. 如果只在一个`RDD`出现重复的`key`，那将在无意中丢失你的数据。所以使用外连接会更加安全，这样你就能确保左边的`RDD`或者右边的`RDD`的数据完整性，在`join`之后再过滤数据。（**使用外连接，再过滤**）
+3. 如果我们容易得到`RDD`的可以的有用的子集合，那么可以先用`filter`或者`reduce`，再用 `join`。(**先减少数据再过滤**)
 
 # `Spark shuffle & MR shuffle`
 
@@ -415,7 +414,9 @@ persist()方法允许指定持久化级别，可以选择将数据存储在内�
 
 对于特别复杂的`Spark`应用，会出现某个反复使用的`RDD`，即使之前使用了持久化但由于节点的故障导致数据丢失，如果没有容错机制，那么需要重新从开头开始计算。
 
-`checkpoint`首先会调用`SparkContext`的`setCheckPointDir()`方法，设置一个容错的文件系统的目录；然后对`RDD`调用`checkpoint()`方法；之后在`RDD`所处的`job`运行结束之后，会启动一个单独`Job`，将`checkpoint`的`RDD`数据写入之前设置的文件系统，进行高可用，容错的持久化操作。
+1. `checkpoint`首先会调用`SparkContext`的`setCheckPointDir()`方法，设置一个容错的文件系统的目录；
+2. 对`RDD`调用`checkpoint()`方法;
+3. 之后在`RDD`所处的`job`运行结束之后，会启动一个单独`Job`，将`checkpoint`的`RDD`数据写入之前设置的文件系统，进行高可用，容错的持久化操作。
 
 检查点机制在`Spark Streaming`用来保障容错性，它可以使`Spark Streaming`阶段性的把应用数据存储到可靠的存储系统，方便恢复时使用。
 
@@ -424,20 +425,17 @@ persist()方法允许指定持久化级别，可以选择将数据存储在内�
 
 # 持久化与检查点的区别
 
-- 持久化
-  - 数据由`BlockManager`管理，存储在磁盘，内存
-  - 血缘关系不变
-  - 数据丢失的可能性更大
-- 检查点
-  - 血缘关系会被切断
-  - 数据保存在第三方存储系统
-  - 数据丢失的可能性较低
+| 持久化                                     | 检查点                   |
+| ------------------------------------------ | ------------------------ |
+| 数据由`BlockManager`管理，存储在磁盘，内存 | 数据保存在第三方存储系统 |
+| 血缘关系不变                               | 血缘关系会被切断         |
+| 数据丢失的可能性更大                       | 数据丢失的可能性较低     |
 
 # Spark Streaming 的基本工作原理
 
 `Spark Streaming`是`Spark core`的一种扩展，可以用于进行大规模、高吞吐、容错的实时数据流处理
 
-接受实时输入数据流，然后将数据拆分成`batch`，比如每收集一秒的数据封装成一个`batch`，然后将每个`batch`交给`spark`的计算引擎进行处理，最后会生产处一个结果数据流，其中的数据也是一个一个的`batch`组成的。
+接受实时输入数据流，然后将数据拆分成`batch`，比如每收集一秒的数据**封装成一个`batch`**，然后将每个`batch`交给`spark`的计算引擎进行处理，最后会生产处一个结果数据流，其中的数据也是一个一个的`batch`组成的。
 
 # `DStream` 基本工作原理
 
@@ -594,7 +592,7 @@ persist()方法允许指定持久化级别，可以选择将数据存储在内�
 
 ![img](Spark.assets/50f89c608c76fba7800950d712490068.png)
 
-# 任务调度过程
+# 任务调度过程`Driver`
 
 spark 的任务调度器是负责将 `spark` 任务程序中的任务分配给集群中的可用资源（内存，`CPU`，磁盘)等。任务调度器的主要作用是实现任务的并行执行和资源的高效利用，提高` spark `的性能和吐吞量
 
@@ -950,7 +948,7 @@ BlockManagerMaster类：是BlockManager的主节点，负责管理所有BlockMan
 综上所述，Spark中的Broadcast机制通过序列化和分布式缓存等技术，实现了在集群节点间高效共享只读数据的功能，从而提高了任务的执行效率。
 ```
 
-## 驱动程序
+## 驱动程序`Driver`
 
 ```
 Spark 驱动程序是 Spark 应用程序的主程序，是整个集群中的控制中心。驱动程序运行用户定义的代码，定义和执行作业和任务，以及管理 Spark 应用程序的整个生命周期。
@@ -1028,7 +1026,7 @@ Shuffle 操作优化：Shuffle Manager 还会根据配置进行一些优化，�
 Shuffle Manager 是 Spark 中非常重要的组件，它的性能优化对于整个 Spark 应用的性能和稳定性都有很大的影响。
 ```
 
-## TaskScheduler
+## `TaskScheduler`
 
 ```
 Spark的TaskScheduler是一个负责将作业拆分成任务并将任务分配给集群中的可用执行器的组件。它管理了调度Spark集群中的任务执行，并与集群管理器协同工作以分配资源。
@@ -1052,7 +1050,7 @@ TaskScheduler通过网络将任务分配给可用的执行器。
 在这个过程中，TaskScheduler根据可用的资源、任务需求和集群状态来决定在何时将任务分配给执行器。它还处理失败任务的重新执行，以确保Spark应用程序可以成功地完成。
 ```
 
-## DAGScheduler 是优化执行计划
+## `DAGScheduler `是优化执行计划
 
 ```
 Spark DAGScheduler是Spark作业的调度器，负责将逻辑执行计划转换成物理执行计划，优化执行顺序并执行作业中的所有任务。
